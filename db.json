@@ -136,6 +136,41 @@
             "servingSize": "3",
             "calories": 6900
           }
+        },
+        {
+          "1641541240483": {
+            "food": "apple",
+            "servingSize": "2",
+            "calories": 1760
+          }
+        },
+        {
+          "1641549335086": {
+            "food": "apple",
+            "servingSize": "2",
+            "calories": 1760
+          }
+        },
+        {
+          "1641623973652": {
+            "food": "apple",
+            "servingSize": "5",
+            "calories": 4400
+          }
+        },
+        {
+          "1641625600213": {
+            "food": "apple",
+            "servingSize": "1",
+            "calories": 880
+          }
+        },
+        {
+          "1641625624933": {
+            "food": "oreos",
+            "servingSize": "2",
+            "calories": 4600
+          }
         }
       ]
     }

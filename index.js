@@ -45,10 +45,16 @@ however, for..in is not the same, as it iterates over enumerable properties
 -> launch json-server before making REST requests to get data from there (we are storing json-formatted files there) 
 (npx json-server --watch ./db.json --port 3001)
 -> we are using axios to make RESTful requests to our json server
-*/
+->  Iterators: Iterator are objects which uses next() method to get next value of sequence. 
+    Generators: A generator is a function that produces or yields a sequence of values using yield method.
+-> The yield keyword pauses generator function execution and the value of the expression following the yield keyword is returned to the generator's caller. 
+   It can be thought of as a generator-based version of the return keyword. yield can only be called directly from the generator function that contains it.
+-> in custom iterators, we have to manually implement throw and error methods .. but generators already have those
+   */
 
 // code starts here
 const axios = require('axios')
+const CAF = require('caf')
 const readline = require('readline').createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -58,36 +64,27 @@ const readline = require('readline').createInterface({
 readline.prompt() // prompt the user for input
 readline.on('line', async line => { // add an event listener to user's prompt
     switch (line.trim()) {
-        case 'list vegan foods':
-            {   // implementing a custom iterator here
-                axios.get(`http://localhost:3001/food`).then(({ data }) => {
-                    let idx = 0;
-                    const veganOnly = data.filter(food => {
-                        return food.dietary_preferences.includes('vegan')
-                    })
-                    const veganIterable = { // this object needs a Symbol.iterator method defined
-                        [Symbol.iterator]() { // adding custom logic in Symbol.iterator method
-                            return {
-                                [Symbol.iterator]() { // we need a symbol.iterator method that returns itself
-                                    return this;
-                                },
-                                next() {
-                                    const current = veganOnly[idx];
-                                    idx++;
-                                    if (current) { // if current is still defined
-                                        return { value: current, done: false }
-                                    } else {
-                                        return { value: current, done: true }
-                                    }
-                                },
-                            }
-                        },
-                    };
-                    for (let val of veganIterable) {
-                        console.log(val.name)
+        case 'vegan':
+            {   // 
+                const { data } = await axios.get(`http://localhost:3001/food`);
+                function* listVeganFoods() { //a generator function
+                    try {
+                        let idx = 0;
+                        const veganOnly = data.filter(food => food.dietary_preferences.includes('vegan')
+                        );
+                        while (veganOnly[idx]) {
+                            yield veganOnly[idx]
+                            idx++;
+                        }
+                    } catch (error) {
+                        console.log({ error })
                     }
-                    readline.prompt()
-                })
+
+                }
+                for (let val of listVeganFoods()) { //for..of loop uses iterator, so we dont have to use next commands manually
+                    console.log(val.name)  //the whole list of vegan foods is printed in this for..of loop
+                }
+                readline.prompt()
             }
             break;
         case 'log':
@@ -96,43 +93,28 @@ readline.on('line', async line => { // add an event listener to user's prompt
                 const it = data[Symbol.iterator](); //data is an object having function Symbol.iterator() .. read in mind like: data.(Symbol.iterator)() 
                 let actionIt; // to be defined later for actionIterator
 
-                const actionIterator = { // custom iterator to iterate functions instead of objects
-                    [Symbol.iterator]() {
-                        let positions = [...this.actions]
-                        // let positions = this.actions // it also works fine in place of above statement
-                        return {
-                            [Symbol.iterator]() {
-                                return this;
-                            },
-                            next(...args) {
-                                if (positions.length > 0) { //check to see if we haven't finished the list
-                                    const position = positions.shift() //shift removes the first element of an array and returns it
-                                    // console.log(position) // it prints [Function: askForServingSize] first .. and then second time prints [Function: displayCalories]
-                                    const result = position(...args)
-                                    return { value: result, done: false }
-                                } else {
-                                    return { done: true }
-                                }
-                            },
-                            return() {
-                                positions = [];
-                                return { done: true }
-                            },
-                            throw(error) {
-                                console.log(error);
-                                return { value: undefined, done: true }
-                            }
-                        }
-                    },
-                    actions: [askForServingSize, displayCalories],
-                }
+                function* actionGenerator() { //a generator function
+                    try {
+                        const food = yield; //first next statement will bring the cursor here but it will be paused here
+                        const servingSize = yield askForServingSize();//2nd next statement will bring the cursor here but it will be paused here .. askforServingSize() will execute but value will not be assigned to const servingSize until another next command
+                        yield displayCalories(servingSize, food)
+                    } catch (error) {
+                        console.log({ error })
+                    }
+                    // const food = yield; //first next statement will bring the cursor here but it will be paused here
+                    // const servingSize = yield askForServingSize();//2nd next statement will bring the cursor here but it will be paused here .. askforServingSize() will execute but value will not be assigned to const servingSize until another next command
+                    // yield displayCalories(servingSize, food)//3rd next here and paused
+                }                                           //4th next will bring the cursor here and we'll leave the function .. 
 
-                function askForServingSize(food) {
+                function askForServingSize() {
                     readline.question(`How many servings did you eat? `, servingSize => {
                         if (servingSize === 'nevermind' || servingSize === 'n') {
                             actionIt.return()
+                            readline.prompt()
+                        } else if (typeof Number(servingSize) !== 'number' || Number(servingSize) === NaN) {
+                            actionIt.throw('Please only numbers can be entered') // throw an exception
                         } else {
-                            actionIt.next(servingSize, food)
+                            actionIt.next(servingSize)
                         }
                     })
                 }
@@ -143,7 +125,7 @@ readline.on('line', async line => { // add an event listener to user's prompt
                         calories * parseInt(servingSize, 10)
                     ).toFixed()} calories.` ,
                     );
-                    const  {data}  = await axios.get('http://localhost:3001/users/1')
+                    const { data } = await axios.get('http://localhost:3001/users/1')
                     /* note that in ^, the curly braces indicate a destructuring assignment .. it is a shorthand way of writing things
                     it basically means: const data = (WHATEVER RESPONSE FROM AXIOS).data */
                     const usersLog = data.log || []; //set it to empty array in case its undefined
@@ -156,17 +138,17 @@ readline.on('line', async line => { // add an event listener to user's prompt
                                     food: food.name,
                                     servingSize,
                                     calories: Number.parseFloat(
-                                        calories*parseInt(servingSize*10),
+                                        calories * parseInt(servingSize * 10),
                                     )
                                 }
                             }
                         ]
                     }
-                    await axios.put('http://localhost:3001/users/1', putBody, { // put users log info in db.json
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    })
+                    // await axios.put('http://localhost:3001/users/1', putBody, { // put users log info in db.json
+                    //     headers: {
+                    //         'Content-Type': 'application/json'
+                    //     }
+                    // })
 
                     actionIt.next()
                     readline.prompt()
@@ -179,16 +161,101 @@ readline.on('line', async line => { // add an event listener to user's prompt
                         const food = position.value.name
                         if (food == item) { // if the entered name matches any item, then print it in console
                             console.log(`${item} has ${position.value.calories} calories. `);
-                            actionIt = actionIterator[Symbol.iterator]();
-                            actionIt.next(position.value)
-                            //^ Logic --> askForServingSize() is run first, and then displayCalories()
+                            actionIt = actionGenerator();
+                            actionIt.next(); //it will just start the iterator
+                            actionIt.next(position.value) //it will assign value to food : const food = yield;   // and will move to next statement
                         }
                         position = it.next() // go to next item
                     }
                     readline.prompt() // get back to prompt
                 })
-            }
+            };
+            break;
+        case `today`: // print today's log
+            {
+                let email; //define email
+                readline.question('Email:', async emailAddress => { // enter email address
+                    const { data } = await axios.get(
+                        `http://localhost:3001/users?email=${emailAddress}`); //query the data for email address
+                    const foodLog = data[0].log || []; //foodLog is an array containing objects
+                    let totalCalories = 0;
+
+                    function* getFoodLog() {
+                        try {
+                            yield* foodLog; //yield delegation to foodLog array
+                        } catch (error) {
+                            console.log({ error })
+                        }
+                    }
+                    const logIterator = getFoodLog() //create an iterator of getFoodLog generator
+
+                    for (const entry of logIterator) { //for (const entry of foodLog) --> it will also serve the same purpose .. but we had to understand yield delegation that's why ...
+                        const timeStamp = Object.keys(entry)[0] //The Object.keys() method returns an array of a given object's own enumerable property names
+                        // console.log('1', entry)     //{ '1572791640182': { food: 'apple', servingSize: '2', calories: 176 } }
+                        // console.log('2 ',Object.keys(entry)) //[ '1572791640182' ]
+                        // console.log('3 ', Object.keys(entry)[0]) //1572791640182
+                        if (isToday(new Date(Number(timeStamp)))) { // checks if the timeStamp equals today
+                            console.log(
+                                `${entry[timeStamp].food}, ${entry[timeStamp].servingSize} serving(s), ${entry[timeStamp].calories} calories`
+                            )
+                            totalCalories += entry[timeStamp].calories
+                            if (totalCalories > 7000) {
+                                console.log('calories above 7000')
+                                logIterator.return() // the generator will not log any more food items to the screen
+                            }
+                        }
+                    }
+                    console.log('---------------');
+                    console.log(`Total Calories: ${totalCalories}`)
+                    readline.prompt()
+                })
+            };
+            break;
+        default: {
+            // any other input by user and we'' get into this portion that helps understand the Cancellable Async Flows
+            //CAF makes generator functions work like async functions . Gives the ability to externally cancel an async request
+            // Note: revisit this CAF part later if needed for better understanding
+
+            const token = new CAF.timeout(300, "this is taking too long")  //this token is later passed as a signal to fetchData
+            // logic: if the below function takes longer than 300ms, then cancel everything which uses CAF .. that means not only cancel the fetchCAF call, but also the delay
+            const fetchCAF = CAF(function* fetchData(signal) { //CAF is a wrapper for function* generators that treats them like async functions, but with support for external cancellation via tokens.
+                yield CAF.delay(signal, 200);
+                const promise = yield axios.get('http://localhost:3001/food');
+                return promise;
+            })
+
+            fetchCAF(token) //token for external cancellation
+                .then(response => {
+                    console.log(response.data[0])
+                    readline.prompt()
+                }).catch(error => {
+                    console.log(error)
+                    readline.prompt()
+                })                
+
+            // async function* fetchData() {
+            //     const promise = await axios.get('http://localhost:3001/users');
+            //     return promise
+            // }
+            // const it = fetchData()
+            // it.next().value.then(response => {
+            //     console.log(response.data[0].firstname)
+            //     readline.prompt() //return to prompt
+            // })
+        }
+            break;
     }
-})
+    // readline.prompt()
+});
+
+function isToday(timeStamp) { // checks if the timeStamp equals today
+    const today = new Date();
+    return ( // return true if all three conditions match
+        timeStamp.getDate() === today.getDate() &&
+        timeStamp.getMonth() === today.getMonth() &&
+        timeStamp.getFullYear() === today.getFullYear()
+    )
+}
+
 
 
